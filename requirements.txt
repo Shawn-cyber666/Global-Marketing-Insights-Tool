@@ -1,8 +1,6 @@
 streamlit
-requests
-beautifulsoup4
-lxml
 pandas
 plotly
 wordcloud
 matplotlib
+duckduckgo-search
