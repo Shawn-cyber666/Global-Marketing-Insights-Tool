@@ -9,8 +9,8 @@ import re
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 
-# 1. 页面与商务白样式配置
-st.set_page_config(page_title="Global Insight BI v5.2", layout="wide")
+# 1. 页面样式与商务白主题配置
+st.set_page_config(page_title="Global Insight BI v5.5", layout="wide")
 
 st.markdown("""
     <style>
@@ -21,22 +21,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ 全球深度评测与口碑 BI 看板")
-st.caption("定位：产品营销辅助系统 | 已修复：缩进、链接、中式缩写逻辑")
+st.title("🛡️ 全球产品声量与渠道实时看板")
+st.caption("功能：实时口碑挖掘 | 渠道时效追踪 | 链接深度修复")
 st.markdown("---")
 
-# 2. 搜索模块
+# 2. 交互模块
 with st.container():
     col_input, col_btn = st.columns([3, 1])
     with col_input:
-        target = st.text_input("🔍 输入监测机型 (支持 x300u/x300p 自动转换)", "vivo X300 Ultra")
+        target = st.text_input("🔍 监测机型 (自动识别 u/p 缩写)", "vivo X300 Ultra")
     with col_btn:
         st.write(" ")
-        run_btn = st.button("开始挖掘海外原声", use_container_width=True)
+        run_btn = st.button("挖掘全球实时数据", use_container_width=True)
 
 if run_btn:
-    with st.spinner('🚀 正在连接全球数据节点...'):
-        # --- 业务逻辑：自动转换中式简写 (PM 视角优化) ---
+    with st.spinner('🚀 正在同步全球媒体节点，请稍后...'):
+        # 中式缩写转换逻辑
         target_clean = target.strip().lower()
         if target_clean.endswith('u'):
             target_search = target_clean.replace('u', ' ultra')
@@ -45,8 +45,8 @@ if run_btn:
         else:
             target_search = target_clean
 
-        # 构造搜索指令：机型 + 评测词
-        search_query = f'{target_search} (review OR hands-on OR opinion)'
+        # 搜索增强：机型 + 评测关键词
+        search_query = f'{target_search} review'
         encoded_query = urllib.parse.quote(search_query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
         
@@ -61,71 +61,80 @@ if run_btn:
             for item in items[:50]:
                 title = item.title.text if item.title else ""
                 
-                # 严格过滤：标题必须包含用户搜的关键词（支持转换后的全称）
+                # 关键词匹配校验
                 if target_search not in title.lower() and target_clean not in title.lower():
                     continue
                 
-                source = item.source.text if item.source else "Global Media"
+                source = item.source.text if item.source else "Overseas Media"
                 
-                # 链接提取补丁
-                link_val = "#"
-                if item.find('link'):
-                    link_val = item.find('link').get_text()
+                # 时间格式化
+                raw_date = item.pubDate.text if item.pubDate else "Recently"
+                formatted_date = raw_date[:16] # 截取到分钟
+                
+                # 核心：链接提取与清理
+                link_node = item.find('link')
+                link_val = link_node.get_text() if link_node else "#"
                 
                 raw_data.append({
-                    "时间": item.pubDate.text[:16] if item.pubDate else "Recent",
-                    "媒体来源": source,
-                    "核心标题": title,
-                    "跳转原文": link_val
+                    "发布时间": formatted_date,
+                    "来源渠道": source,
+                    "核心标题内容": title,
+                    "原文链接": link_val
                 })
                 all_text += " " + title.lower()
 
             if raw_data:
                 df = pd.DataFrame(raw_data)
 
-                # --- 3. 核心 KPI ---
+                # --- 3. 实时看板 KPI ---
                 m1, m2, m3 = st.columns(3)
-                m1.metric("精准匹配篇数", f"{len(df)} 篇", "已过滤干扰项")
-                m2.metric("主要声音来源", df['媒体来源'].mode()[0] if not df.empty else "N/A")
-                m3.metric("搜索词转换", f"'{target}' -> '{target_search}'")
+                m1.metric("监测到相关评测", f"{len(df)} 篇")
+                m2.metric("最活跃渠道", df['来源渠道'].mode()[0])
+                m3.metric("数据时效", "实时同步")
 
-                # --- 4. 词云与图表功能回归 ---
-                st.markdown('<div class="report-card"><h3>📊 海外评测高频词分析</h3></div>', unsafe_allow_html=True)
+                # --- 4. 词云与趋势可视化 ---
+                st.markdown('<div class="report-card"><h3>📊 海外用户关注度点阵</h3></div>', unsafe_allow_html=True)
                 
                 words = re.findall(r'\w+', all_text)
-                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'this', 'that', 'review', 'hands', 'opinion', 'video', 'news'}
+                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'this', 'that', 'review', 'news', 'video'}
                 filtered_words = [w for w in words if len(w) > 3 and w not in stop_words and w not in target_search.split()]
                 
                 c1, c2 = st.columns([1, 1])
                 with c1:
                     word_counts = Counter(filtered_words).most_common(10)
-                    word_df = pd.DataFrame(word_counts, columns=['特征词', '频次'])
-                    fig_bar = px.bar(word_df, x='频次', y='特征词', orientation='h', color='频次', template="plotly_white")
+                    word_df = pd.DataFrame(word_counts, columns=['热词', '频次'])
+                    fig_bar = px.bar(word_df, x='频次', y='热词', orientation='h', color='频次', color_continuous_scale='Blues')
                     st.plotly_chart(fig_bar, use_container_width=True)
                 with c2:
                     if filtered_words:
-                        wc = WordCloud(background_color="white", width=600, height=300).generate(" ".join(filtered_words))
+                        wc = WordCloud(background_color="white", width=600, height=300, colormap='Blues').generate(" ".join(filtered_words))
                         plt.figure(figsize=(10, 5))
                         plt.imshow(wc, interpolation='bilinear'); plt.axis("off")
                         st.pyplot(plt)
 
-                # --- 5. 数据明细与直达链接 ---
-                st.markdown('<div class="report-card"><h3>🔗 精准数据清单 (可跳转)</h3></div>', unsafe_allow_html=True)
-                # 使用 column_config 确保链接 100% 可点击
+                # --- 5. 实时数据明细 (带链接修复) ---
+                st.markdown('<div class="report-card"><h3>🔗 实时监测清单 (点击 "Open" 直达原文)</h3></div>', unsafe_allow_html=True)
+                
                 st.dataframe(
                     df, 
                     use_container_width=True,
                     column_config={
-                        "跳转原文": st.column_config.LinkColumn("🚀 直达原文", display_text="Open Link")
+                        "原文链接": st.column_config.LinkColumn(
+                            "原文链接",
+                            help="点击直接跳转至来源网页",
+                            display_text="Open Link 🔗"
+                        ),
+                        "发布时间": st.column_config.TextColumn("📅 发布时间"),
+                        "来源渠道": st.column_config.TextColumn("📡 来源渠道")
                     },
                     hide_index=True
                 )
 
             else:
-                st.warning(f"未找到关于 '{target}' 的精确结果。建议尝试输入全称，如 'vivo X300 Ultra'。")
+                st.warning(f"暂未在海外主流渠道发现关于 '{target}' 的精确讨论，建议检查机型全称。")
                 
         except Exception as e:
-            st.error(f"引擎启动失败: {e}")
+            st.error(f"连接中断: {e}")
 
 st.markdown("---")
-st.caption("Global Marketing Insight BI System v5.2 | Final Indent & Logic Fixed")
+st.caption("Marketing Insight System v5.5 | Developer Edition")
