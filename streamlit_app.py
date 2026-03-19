@@ -24,11 +24,12 @@ st.title("🛡️ 全球海外用户真实口碑 (UGC) BI 看板")
 st.caption("定位：产品营销辅助系统 - 穿透媒体通稿，直击海外社群真实痛点")
 st.markdown("---")
 
-# 2. 精准搜索模块
+# 2. 搜索模块优化
 with st.container():
     col_input, col_btn = st.columns([3, 1])
     with col_input:
-        target = st.text_input("🔍 输入精准机型 (如: vivo X300s)", "vivo X300")
+        # 修改了提示语，引导输入全称
+        target = st.text_input("🔍 输入监测机型 (💡出海提示：海外用户多用全称，请搜 'vivo X300 Ultra' 而非 'X300u')", "vivo X300 Ultra")
     with col_btn:
         st.write(" ")
         run_btn = st.button("挖掘海外真实评论", use_container_width=True)
@@ -36,10 +37,10 @@ with st.container():
 if run_btn:
     with st.spinner('🚀 正在突破海外防火墙，提取真实 UGC...'):
         try:
-            # 核心变动：利用搜索引擎的语法 site:reddit.com 强制在海外论坛内进行“精准匹配”
-            query = f'site:reddit.com "{target}"'
+            # 核心变动：去掉了严格的双引号，允许搜索引擎利用 NLP 模糊匹配，但依然死死限制在 Reddit 站内
+            query = f'site:reddit.com {target}'
             
-            # 使用 DDGS 库绕过反爬虫机制
+            # 使用 DDGS 库获取数据
             results = DDGS().text(query, max_results=40)
             
             raw_data = []
@@ -50,7 +51,7 @@ if run_btn:
                 link = r.get('href', '#')
                 body = r.get('body', '')
                 
-                # 从链接中智能提取 Reddit 版块名称 (如 r/Android)
+                # 提取 Reddit 版块
                 sub_match = re.search(r'reddit\.com/r/([^/]+)', link)
                 subreddit = f"r/{sub_match.group(1)}" if sub_match else "Reddit General"
                 
@@ -59,7 +60,6 @@ if run_btn:
                     "讨论摘要": body[:150] + "..." if len(body) > 150 else body,
                     "跳转原文": link
                 })
-                # 将标题和摘要放入词云分析池
                 all_text += " " + title.lower() + " " + body.lower()
             
             if raw_data:
@@ -67,16 +67,15 @@ if run_btn:
 
                 # --- 3. 核心 KPI ---
                 m1, m2, m3 = st.columns(3)
-                m1.metric("精准匹配 UGC 讨论数", f"{len(df)} 条", "100% 用户原声")
+                m1.metric("挖掘到 UGC 讨论数", f"{len(df)} 条", "来自真实海外论坛")
                 m2.metric("核心发声阵地", df['社区版块'].mode()[0] if not df.empty else "N/A")
-                m3.metric("爬虫穿透状态", "成功 (Bypassed)")
+                m3.metric("爬虫状态", "成功直连 (Bypassed)")
 
-                # --- 4. 用户关注功能点挖掘 ---
-                st.markdown('<div class="report-card"><h3>📊 海外用户最关心的功能/痛点提取</h3></div>', unsafe_allow_html=True)
+                # --- 4. 痛点挖掘 ---
+                st.markdown('<div class="report-card"><h3>📊 海外用户最关心的功能/情绪点</h3></div>', unsafe_allow_html=True)
                 
                 words = re.findall(r'\w+', all_text)
-                # 停用词库（加入大量无意义词汇）
-                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'from', 'this', 'that', 'over', 'says', 'but', 'are', 'just', 'like', 'have', 'has', 'not', 'was', 'reddit', 'comments', 'you', 'can', 'will'}
+                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'from', 'this', 'that', 'over', 'says', 'but', 'are', 'just', 'like', 'have', 'has', 'not', 'was', 'reddit', 'comments', 'you', 'can', 'will', 'about', 'they', 'what'}
                 search_terms = set(target.lower().split())
                 final_stop_words = stop_words.union(search_terms)
                 
@@ -97,7 +96,7 @@ if run_btn:
                         plt.axis("off")
                         st.pyplot(plt)
 
-                # --- 5. UGC 数据明细与可点击链接 ---
+                # --- 5. 数据明细与可点击链接 ---
                 st.markdown('<div class="report-card"><h3>🔗 海外社群原声清单与追溯</h3></div>', unsafe_allow_html=True)
                 
                 c3, c4 = st.columns([1, 1.5])
@@ -108,7 +107,7 @@ if run_btn:
                     st.plotly_chart(fig_pie, use_container_width=True)
                 
                 with c4:
-                    st.markdown("💬 **实时网友发帖清单 (点击右侧即可直达海外社区):**")
+                    st.markdown("💬 **实时网友发帖清单 (点击直达海外社区):**")
                     st.dataframe(
                         df, 
                         use_container_width=True,
@@ -123,10 +122,10 @@ if run_btn:
                     )
 
             else:
-                st.warning(f"在海外社群中暂未找到完全匹配 '{target}' 的用户讨论。这通常意味着该产品在海外尚未形成规模声量。")
+                st.warning(f"暂未抓取到关于 '{target}' 的有效数据。请检查拼写，或尝试使用更完整的国际版产品名称。")
                 
         except Exception as e:
-            st.error(f"引擎提取失败，请重试。错误信息: {e}")
+            st.error(f"引擎提取失败，可能是当前网络请求过频，请稍等片刻后重试。错误信息: {e}")
 
 st.markdown("---")
-st.caption("Global UGC Insight System v4.0 | Anti-Block Engine Enabled | Powered by Real Community Data")
+st.caption("Global UGC Insight System v4.1 | 搜索逻辑优化版 | Powered by Real Community Data")
