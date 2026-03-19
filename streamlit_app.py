@@ -8,34 +8,35 @@ from collections import Counter
 import re
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+from datetime import datetime
 
-# 1. 页面样式与商务白主题配置
-st.set_page_config(page_title="Global Insight BI v5.5", layout="wide")
+# 1. 页面配置与大厂风格
+st.set_page_config(page_title="Global Insight v5.8", layout="wide")
 
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; color: #333333; }
-    .report-card { background-color: #ffffff; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; box-shadow: 0 4px 6px rgba(0,0,0,0.02); margin-bottom: 20px;}
-    h1, h2, h3 { color: #0052d4; font-family: 'Segoe UI', sans-serif; }
-    div.stButton > button:first-child { background-color: #0052d4; color: white; border-radius: 8px; }
+    .main { background-color: #f8f9fa; }
+    .report-card { background-color: #ffffff; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; margin-bottom: 20px;}
+    h1, h2, h3 { color: #0052d4; }
+    /* 强制表格换行，确保长URL可见 */
+    .stTable td { word-break: break-all !important; white-space: normal !important; font-size: 13px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ 全球产品声量与渠道实时看板")
-st.caption("功能：实时口碑挖掘 | 渠道时效追踪 | 链接深度修复")
-st.markdown("---")
+st.title("🛡️ 全球产品声量精准监测看板")
+st.caption("同步：Google News 实时索引 | 修复：精确日期、完整 URL 展示")
 
-# 2. 交互模块
+# 2. 搜索模块
 with st.container():
     col_input, col_btn = st.columns([3, 1])
     with col_input:
-        target = st.text_input("🔍 监测机型 (自动识别 u/p 缩写)", "vivo X300 Ultra")
+        target = st.text_input("🔍 输入监测机型 (如 x300u / iPhone 16)", "vivo X100 Pro")
     with col_btn:
         st.write(" ")
-        run_btn = st.button("挖掘全球实时数据", use_container_width=True)
+        run_btn = st.button("开始精准挖掘", use_container_width=True)
 
 if run_btn:
-    with st.spinner('🚀 正在同步全球媒体节点，请稍后...'):
+    with st.spinner('🚀 正在提取全球原始数据流...'):
         # 中式缩写转换逻辑
         target_clean = target.strip().lower()
         if target_clean.endswith('u'):
@@ -45,7 +46,6 @@ if run_btn:
         else:
             target_search = target_clean
 
-        # 搜索增强：机型 + 评测关键词
         search_query = f'{target_search} review'
         encoded_query = urllib.parse.quote(search_query)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
@@ -58,83 +58,69 @@ if run_btn:
             raw_data = []
             all_text = ""
             
-            for item in items[:50]:
+            for item in items[:40]:
                 title = item.title.text if item.title else ""
                 
-                # 关键词匹配校验
+                # 严格匹配
                 if target_search not in title.lower() and target_clean not in title.lower():
                     continue
                 
-                source = item.source.text if item.source else "Overseas Media"
+                source = item.source.text if item.source else "Media"
                 
-                # 时间格式化
-                raw_date = item.pubDate.text if item.pubDate else "Recently"
-                formatted_date = raw_date[:16] # 截取到分钟
-                
-                # 核心：链接提取与清理
-                link_node = item.find('link')
-                link_val = link_node.get_text() if link_node else "#"
+                # --- 精确日期处理 ---
+                # 原始格式如: Sat, 14 Mar 2026 08:00:00 GMT
+                raw_date = item.pubDate.text if item.pubDate else ""
+                try:
+                    # 转换为 2026-03-14 这种业务常用格式
+                    date_obj = datetime.strptime(raw_date, '%a, %d %b %Y %H:%M:%S %Z')
+                    final_date = date_obj.strftime('%Y-%m-%d')
+                except:
+                    final_date = raw_date[:16] # 备选方案
+
+                # --- 完整 URL 提取 ---
+                link_val = item.link.next_sibling if item.link else ""
+                if not link_val:
+                    link_val = item.find('link').get_text() if item.find('link') else "N/A"
                 
                 raw_data.append({
-                    "发布时间": formatted_date,
-                    "来源渠道": source,
-                    "核心标题内容": title,
-                    "原文链接": link_val
+                    "日期": final_date,
+                    "渠道来源": source,
+                    "评测标题": title,
+                    "原始URL链接": str(link_val).strip()
                 })
                 all_text += " " + title.lower()
 
             if raw_data:
                 df = pd.DataFrame(raw_data)
 
-                # --- 3. 实时看板 KPI ---
+                # 3. 核心 KPI 展示
                 m1, m2, m3 = st.columns(3)
-                m1.metric("监测到相关评测", f"{len(df)} 篇")
-                m2.metric("最活跃渠道", df['来源渠道'].mode()[0])
-                m3.metric("数据时效", "实时同步")
+                m1.metric("精准命中篇数", len(df))
+                m2.metric("最新监测日期", df['日期'].max())
+                m3.metric("搜索词补全", target_search)
 
-                # --- 4. 词云与趋势可视化 ---
-                st.markdown('<div class="report-card"><h3>📊 海外用户关注度点阵</h3></div>', unsafe_allow_html=True)
-                
+                # 4. 词云回归
+                st.markdown('<div class="report-card"><h3>📊 海外关注热点词云</h3></div>', unsafe_allow_html=True)
                 words = re.findall(r'\w+', all_text)
-                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'this', 'that', 'review', 'news', 'video'}
+                stop_words = {'the', 'a', 'to', 'in', 'of', 'and', 'on', 'with', 'for', 'is', 'at', 'by', 'it', 'this', 'that', 'review', 'news'}
                 filtered_words = [w for w in words if len(w) > 3 and w not in stop_words and w not in target_search.split()]
                 
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    word_counts = Counter(filtered_words).most_common(10)
-                    word_df = pd.DataFrame(word_counts, columns=['热词', '频次'])
-                    fig_bar = px.bar(word_df, x='频次', y='热词', orientation='h', color='频次', color_continuous_scale='Blues')
-                    st.plotly_chart(fig_bar, use_container_width=True)
-                with c2:
-                    if filtered_words:
-                        wc = WordCloud(background_color="white", width=600, height=300, colormap='Blues').generate(" ".join(filtered_words))
-                        plt.figure(figsize=(10, 5))
-                        plt.imshow(wc, interpolation='bilinear'); plt.axis("off")
-                        st.pyplot(plt)
+                if filtered_words:
+                    wc = WordCloud(background_color="white", width=1000, height=400, colormap='Blues').generate(" ".join(filtered_words))
+                    plt.figure(figsize=(15, 6))
+                    plt.imshow(wc, interpolation='bilinear'); plt.axis("off")
+                    st.pyplot(plt)
 
-                # --- 5. 实时数据明细 (带链接修复) ---
-                st.markdown('<div class="report-card"><h3>🔗 实时监测清单 (点击 "Open" 直达原文)</h3></div>', unsafe_allow_html=True)
-                
-                st.dataframe(
-                    df, 
-                    use_container_width=True,
-                    column_config={
-                        "原文链接": st.column_config.LinkColumn(
-                            "原文链接",
-                            help="点击直接跳转至来源网页",
-                            display_text="Open Link 🔗"
-                        ),
-                        "发布时间": st.column_config.TextColumn("📅 发布时间"),
-                        "来源渠道": st.column_config.TextColumn("📡 来源渠道")
-                    },
-                    hide_index=True
-                )
+                # 5. 精准数据表 (使用 st.table 确保 URL 不被隐藏)
+                st.markdown('<div class="report-card"><h3>🔗 精准数据明细清单 (100% 透明展示)</h3></div>', unsafe_allow_html=True)
+                # 使用 table 而不是 dataframe，因为它会完整显示每一行内容
+                st.table(df)
 
             else:
-                st.warning(f"暂未在海外主流渠道发现关于 '{target}' 的精确讨论，建议检查机型全称。")
+                st.warning(f"未能匹配到关于 '{target}' 的精确结果。请尝试更完整的机型名称。")
                 
         except Exception as e:
-            st.error(f"连接中断: {e}")
+            st.error(f"连接异常: {e}")
 
 st.markdown("---")
-st.caption("Marketing Insight System v5.5 | Developer Edition")
+st.caption("Global Marketing Insight System v5.8 | Precise Date & URL Extraction Enabled")
