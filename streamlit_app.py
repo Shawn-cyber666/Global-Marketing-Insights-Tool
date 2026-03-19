@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 import urllib.parse
 import plotly.express as px
 from collections import Counter
@@ -9,124 +8,109 @@ import re
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from datetime import datetime
-import json
 
 # 1. 页面配置
-st.set_page_config(page_title="Global Insight v7.5", layout="wide")
+st.set_page_config(page_title="Global Insight v7.8", layout="wide")
 
-# 2. 侧边栏配置：机器人 Webhook (保护隐私)
+# 2. 侧边栏：灵活配置
 with st.sidebar:
     st.header("⚙️ 自动化配置")
-    webhook_url = st.text_input("群机器人 Webhook 地址", help="支持企业微信/钉钉/飞书机器人 URL", type="password")
-    st.info("💡 配置后可一键将分析摘要推送到项目群。")
+    bot_type = st.selectbox("选择沟通工具", ["飞书 (Lark)", "钉钉 (DingTalk)", "其他 (仅生成文本)"])
+    webhook_url = st.text_input("机器人 Webhook 地址", type="password")
+    st.divider()
+    st.info("💡 提示：飞书/钉钉的机器人通常在群设置->机器人中添加。")
 
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
-    .report-card { background-color: #ffffff; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; box-shadow: 0 4px 6px rgba(0,0,0,0.01); margin-bottom: 20px;}
-    h1, h2, h3 { color: #0052d4; }
+    .report-card { background-color: #ffffff; padding: 20px; border-radius: 12px; border: 1px solid #e9ecef; margin-bottom: 20px;}
+    h1, h3 { color: #0052d4; }
     .url-text { word-break: break-all; font-family: monospace; font-size: 11px; color: #888; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ 全球产品声量监测与自动化助手")
-st.markdown("---")
+st.title("🛡️ 全球产品声量精准监测 (多端适配版)")
 
 # 3. 搜索模块
-with st.container():
-    col_input, col_btn = st.columns([3, 1])
-    with col_input:
-        target = st.text_input("🔍 输入监测机型", "vivo X100 Pro")
-    with col_btn:
-        st.write(" ")
-        run_btn = st.button("挖掘并分析", use_container_width=True)
+target = st.text_input("🔍 监测机型", "vivo X100 Pro")
+run_btn = st.button("挖掘并生成报告", use_container_width=True)
 
-# 定义推送函数
-def push_to_bot(content, url):
+# 统一推送函数
+def send_to_bot(content, url, platform):
     if not url:
-        st.error("❌ 请先在侧边栏填写 Webhook 地址")
+        st.warning("⚠️ 请先在侧边栏配置 Webhook 地址")
         return
-    # 通用 Markdown 格式 (兼容企微/钉钉)
-    payload = {
-        "msgtype": "markdown",
-        "markdown": {
-            "content": content, # 企微格式
-            "text": content,    # 钉钉格式
-            "title": "产品声量周报"
-        }
-    }
+    
+    payload = {}
+    if platform == "飞书 (Lark)":
+        payload = {"msg_type": "text", "content": {"text": content}}
+    elif platform == "钉钉 (DingTalk)":
+        payload = {"msgtype": "text", "text": {"content": content}}
+    
     try:
-        res = requests.post(url, json=payload, timeout=10)
-        if res.status_code == 200:
-            st.success("✅ 已成功推送至群聊！")
-        else:
-            st.error(f"推送失败: {res.text}")
+        res = requests.post(url, json=payload, timeout=5)
+        st.success(f"✅ 已推送到 {platform}！")
     except Exception as e:
-        st.error(f"连接异常: {e}")
+        st.error(f"推送失败: {e}")
 
 if run_btn:
-    with st.spinner('🚀 正在执行深度索引...'):
-        # 业务逻辑：自动转换
+    with st.spinner('🚀 正在索引全球数据...'):
+        # 转换逻辑
         target_clean = target.strip().lower()
         target_search = target_clean.replace('u', ' ultra').replace('p', ' pro') if target_clean.endswith(('u', 'p')) else target_clean
-
-        search_query = f'{target_search} review'
-        encoded_query = urllib.parse.quote(search_query)
+        
+        # 抓取逻辑 (简化示意，保留核心)
+        encoded_query = urllib.parse.quote(f'{target_search} review')
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
         
         try:
-            response = requests.get(rss_url, timeout=15)
+            response = requests.get(rss_url, timeout=10)
             soup = BeautifulSoup(response.content, "lxml")
             items = soup.find_all('item')
             
             raw_data = []
             all_text = ""
-            
-            for item in items[:40]:
-                title = item.title.text if item.title else ""
-                if target_search not in title.lower(): continue
-                
-                source = item.source.text if item.source else "Global Media"
-                date_str = item.pubDate.text[:16] if item.pubDate else ""
-                link_val = item.find('link').get_text() if item.find('link') else "#"
-                
-                raw_data.append({"日期": date_str, "渠道": source, "标题": title, "URL": link_val})
-                all_text += " " + title.lower()
+            for item in items[:30]:
+                title = item.title.text
+                if target_search in title.lower():
+                    source = item.source.text
+                    date = item.pubDate.text[:16]
+                    link = item.find('link').get_text()
+                    raw_data.append({"日期": date, "来源": source, "标题": title, "URL": link})
+                    all_text += " " + title.lower()
 
             if raw_data:
                 df = pd.DataFrame(raw_data)
                 
                 # --- 生成周报文本 ---
-                words = re.findall(r'\w+', all_text)
-                top_keywords = [k for k, v in Counter([w for w in words if len(w)>3 and w not in ['the','review','news']]).most_common(5)]
+                words = [w for w in re.findall(r'\w+', all_text) if len(w)>3 and w not in ['the','review','news']]
+                top_tags = " # ".join([k for k, v in Counter(words).most_common(5)])
                 
-                report_md = f"### 📊 {target_search.upper()} 海外声量速报\n" \
-                            f"> **监测周期**: 本周实时数据\n\n" \
-                            f"- **声量概况**: 精准命中评测 **{len(df)}** 篇\n" \
-                            f"- **核心媒体**: {df['渠道'].mode()[0]} 等权威渠道\n" \
-                            f"- **舆情热词**: # {' # '.join(top_keywords)}\n" \
-                            f"- **最新动态**: {df['日期'].iloc[0]}\n\n" \
-                            f"[查看完整看板]({st.get_option('browser.serverAddress') if 'browser.serverAddress' in st._config.get_config_options() else '本地环境'})"
+                report_txt = f"【产品声量速报 - {target_search.upper()}】\n" \
+                             f"1. 本周新增深度评测: {len(df)} 篇\n" \
+                             f"2. 核心关注点: # {top_tags}\n" \
+                             f"3. 核心媒体: {df['来源'].mode()[0]}\n" \
+                             f"4. 最新更新日期: {df['日期'].iloc[0]}\n" \
+                             f"--- 数据由自动监测看板生成 ---"
 
-                # --- 报告区域 ---
-                st.markdown('<div class="report-card"><h3>📝 自动化报告摘要</h3></div>', unsafe_allow_html=True)
-                st.markdown(report_md)
+                # 报告展示与一键推送
+                st.markdown('<div class="report-card"><h3>📝 自动化报告内容</h3></div>', unsafe_allow_html=True)
+                st.code(report_txt, language="markdown")
                 
-                if st.button("🚀 一键推送到项目群", use_container_width=True):
-                    push_to_bot(report_md, webhook_url)
-
-                # --- 原有图表 ---
-                st.markdown("---")
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.plotly_chart(px.pie(df, names='渠道', hole=0.4, title="媒体来源分布"), use_container_width=True)
+                    if st.button(f"🚀 推送到 {bot_type}"):
+                        send_to_bot(report_txt, webhook_url, bot_type)
                 with c2:
-                    st.plotly_chart(px.bar(pd.DataFrame(Counter(top_keywords).most_common(), columns=['热词','频次']), x='频次', y='热词', orientation='h'), use_container_width=True)
+                    # 新增：导出 Excel 兼容格式
+                    csv = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📂 下载原始数据 (CSV)", csv, f"{target_search}_report.csv", "text/csv")
 
-                st.markdown('<div class="report-card"><h3>🔗 数据明细</h3></div>', unsafe_allow_html=True)
+                # --- 仪表盘 ---
+                st.plotly_chart(px.pie(df, names='来源', hole=0.4, title="渠道占比"), use_container_width=True)
                 st.table(df)
 
             else:
-                st.warning("未找到匹配数据。")
+                st.warning("无匹配数据。")
         except Exception as e:
             st.error(f"Error: {e}")
